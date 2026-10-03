@@ -2,7 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
-@keyframes slide-in { from { opacity: 0; transform: translateX(60px) scale(.97); } to { opacity: 1; transform: none; } }
-.slide-in { animation: slide-in .7s cubic-bezier(.2,.8,.2,1) both; }
-.bg-fade { transition: background .6s ease; }
-@media (prefers-reduced-motion: reduce) { .slide-in { animation: none; } }
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(60px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.slide-in {
+  animation: slide-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0.5;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pop {
+  animation: pop 0.35s ease-out both;
+}
+
+@keyframes word-in {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.word-in {
+  animation: word-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes ring-pulse {
+  from {
+    box-shadow: 0 0 0 0 var(--ring);
+  }
+  to {
+    box-shadow: 0 0 0 22px transparent;
+  }
+}
+.cta-pulse {
+  animation: ring-pulse 2s ease-out infinite;
+}
+
+/* Moving background: gradient sweep + drifting shapes */
+@keyframes bg-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+.animate-bg {
+  background-size: 300% 300%;
+  animation: bg-shift 12s ease-in-out infinite;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--rot));
+  }
+}
+.shape {
+  position: absolute;
+  will-change: transform;
+  animation: drift var(--dur) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide-in,
+  .pop,
+  .word-in,
+  .cta-pulse,
+  .animate-bg,
+  .shape {
+    animation: none !important;
+  }
+}
