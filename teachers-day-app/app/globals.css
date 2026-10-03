@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes slide-in { from { opacity: 0; transform: translateX(60px) scale(.97); } to { opacity: 1; transform: none; } }
+.slide-in { animation: slide-in .7s cubic-bezier(.2,.8,.2,1) both; }
+.bg-fade { transition: background .6s ease; }
+@media (prefers-reduced-motion: reduce) { .slide-in { animation: none; } }
