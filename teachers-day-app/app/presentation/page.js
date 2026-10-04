@@ -13,13 +13,19 @@ export default function Presentation() {
   const [filter, setFilter] = useState("All");
   const [i, setI] = useState(0);
   const [playing, setPlaying] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("messages")
       .select("*")
       .order("created_at", { ascending: true });
-    if (data) setAll(data);
+    if (error) {
+      setLoadError("Could not load cards. Check the Supabase connection and public read policy.");
+      return;
+    }
+    setLoadError("");
+    setAll(data || []);
   }, []);
 
   useEffect(() => {
@@ -121,6 +127,10 @@ export default function Presentation() {
               maxFont={110}
             />
           </div>
+        ) : loadError ? (
+          <p role="alert" className="max-w-xl text-center text-xl font-extrabold text-rose-800">
+            {loadError}
+          </p>
         ) : (
           <p className="text-2xl font-extrabold text-stone-700">
             No cards here yet. Be the first to write one!

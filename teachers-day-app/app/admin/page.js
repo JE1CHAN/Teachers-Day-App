@@ -1,347 +1,533 @@
 "use client";
-import { useEffect, useRef, useState, useCallback } from "react";
-import { toPng } from "html-to-image";
+import { useState } from "react";
+import Link from "next/link";
 import {
-  Download,
+  Archive,
+  Check,
+  ExternalLink,
+  Loader2,
+  LogOut,
   Pencil,
+  RefreshCw,
+  Search,
   Trash2,
-  LayoutGrid,
-  Table2,
-  Lock,
   X,
 } from "lucide-react";
-import MessageCard from "@/components/MessageCard";
-import DepartmentPills from "@/components/DepartmentPills";
-import { DEPARTMENTS, NEUTRAL_GRADIENT } from "@/lib/departments";
+import { DEPARTMENTS } from "@/lib/departments";
+import ThemeBackground from "@/components/ThemeBackground";
 
-export default function Admin() {
-  const [pass, setPass] = useState("");
-  const [authed, setAuthed] = useState(false);
-  const [error, setError] = useState("");
-  const [items, setItems] = useState([]);
-  const [view, setView] = useState("table");
-  const [filter, setFilter] = useState("All");
-  const [selected, setSelected] = useState(new Set());
+const inputClass =
+  "w-full rounded-xl border border-stone-200 bg-white/80 px-3 py-2.5 font-semibold outline-none transition focus:border-emerald-800 focus:ring-2 focus:ring-emerald-800/10";
+
+export default function AdminPage() {
+  const [passcode, setPasscode] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [filter, setFilter] = useState("pending");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [editing, setEditing] = useState(null);
-  const exportRefs = useRef({});
+  const [deleting, setDeleting] = useState(null);
 
-  const api = useCallback(
-    async (method, body, query = "", p = pass) => {
-      const res = await fetch("/api/admin" + query, {
-        method,
-        headers: { "x-admin-passcode": p, "Content-Type": "application/json" },
-        body: body && JSON.stringify(body),
-      });
-      return { ok: res.ok, ...(await res.json()) };
-    },
-    [pass],
-  );
+  const showNotice = (message, type = "success") => setNotice({ message, type });
 
-  const login = async (e) => {
-    e.preventDefault();
-    const r = await api("GET");
-    if (!r.ok) return setError(r.error || "Could not sign in");
-    sessionStorage.setItem("adminPass", pass);
-    setItems(r.data);
-    setAuthed(true);
-    setError("");
+  const adminRequest = async (method = "GET", body, id) => {
+    const url = id ? `/api/admin?id=${encodeURIComponent(id)}` : "/api/admin";
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-passcode": passcode,
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Request failed.");
+    return result.data;
   };
-  useEffect(() => {
-    // restore session
-    const p = sessionStorage.getItem("adminPass");
-    if (p) {
-      setPass(p);
-      api("GET", null, "", p).then((r) => {
-        if (r.ok) {
-          setItems(r.data);
-          setAuthed(true);
-        }
-      });
-    }
-  }, []); // eslint-disable-line
 
-  const save = async () => {
-    const r = await api("PATCH", editing);
-    if (r.ok) {
-      setItems(items.map((m) => (m.id === r.data.id ? r.data : m)));
+  const loadMessages = async () => {
+    setLoading(true);
+    setNotice(null);
+    try {
+      setMessages(await adminRequest());
+      setAuthenticated(true);
+    } catch (error) {
+      showNotice(error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+
+  const signIn = async (event) => {
+    event.preventDefault();
+    await loadMessages();
+  };
+
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    setBusyId(editing.id);
+    setNotice(null);
+    try {
+      const updated = await adminRequest("PATCH", {
+        id: editing.id,
+        to_name: editing.to_name.trim(),
+        message: editing.message.trim(),
+        from_name: editing.from_name.trim() || "Anonymous",
+      });
+      setMessages((current) =>
+        current.map((message) => (message.id === updated.id ? updated : message)),
+      );
       setEditing(null);
-    } else alert(r.error);
-  };
-  const remove = async (id) => {
-    if (!confirm("Delete this card permanently?")) return;
-    const r = await api("DELETE", null, `?id=${id}`);
-    if (r.ok) setItems(items.filter((m) => m.id !== id));
-    else alert(r.error);
-  };
-  const download = async (m) => {
-    const node = exportRefs.current[m.id];
-    const url = await toPng(node, { pixelRatio: 3, cacheBust: true });
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `card-${m.department}-${m.to_name.replace(/\W+/g, "_")}-${m.id.slice(0, 6)}.png`;
-    a.click();
-  };
-  const downloadSelected = async () => {
-    for (const m of items.filter((x) => selected.has(x.id))) {
-      await download(m);
-      await new Promise((r) => setTimeout(r, 400));
+      showNotice("Changes saved.");
+    } catch (error) {
+      showNotice(error.message, "error");
+    } finally {
+      setBusyId(null);
     }
   };
-  const toggle = (id) => {
-    const s = new Set(selected);
-    s.has(id) ? s.delete(id) : s.add(id);
-    setSelected(s);
+
+  const toggleArchive = async (message) => {
+    setBusyId(message.id);
+    setNotice(null);
+    try {
+      const updated = await adminRequest("PATCH", {
+        id: message.id,
+        archived_at: message.archived_at ? null : new Date().toISOString(),
+      });
+      setMessages((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      showNotice(message.archived_at ? "Card restored." : "Card archived.");
+    } catch (error) {
+      showNotice(error.message, "error");
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  if (!authed) {
-    return (
-      <main
-        className={`grid min-h-screen place-items-center bg-gradient-to-br ${NEUTRAL_GRADIENT} p-4`}
-      >
-        <form
-          onSubmit={login}
-          className="w-full max-w-sm space-y-4 rounded-[2rem] bg-white p-8 shadow-xl"
-        >
-          <Lock className="h-8 w-8" />
-          <h1 className="text-2xl font-black">Admin passcode</h1>
-          <input
-            type="password"
-            autoFocus
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            className="w-full rounded-2xl border-2 px-4 py-3 font-semibold outline-none focus:border-stone-500"
-          />
-          {error && (
-            <p role="alert" className="font-bold text-rose-600">
-              {error}
-            </p>
-          )}
-          <button className="w-full rounded-full bg-stone-800 py-3 font-black text-white">
-            Open dashboard
-          </button>
-        </form>
-      </main>
-    );
-  }
+  const toggleApproval = async (message) => {
+    setBusyId(message.id);
+    setNotice(null);
+    try {
+      const updated = await adminRequest("PATCH", {
+        id: message.id,
+        approved_at: message.approved_at ? null : new Date().toISOString(),
+      });
+      setMessages((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      showNotice(message.approved_at ? "Card returned to review." : "Card approved and published.");
+    } catch (error) {
+      showNotice(error.message, "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
-  const shown =
-    filter === "All" ? items : items.filter((m) => m.department === filter);
-  const actions = (m) => (
-    <div className="flex gap-1">
-      <button
-        aria-label="Download PNG"
-        onClick={() => download(m)}
-        className="rounded-full p-2 hover:bg-stone-100"
-      >
-        <Download className="h-4 w-4" />
-      </button>
-      <button
-        aria-label="Edit"
-        onClick={() => setEditing({ ...m })}
-        className="rounded-full p-2 hover:bg-stone-100"
-      >
-        <Pencil className="h-4 w-4" />
-      </button>
-      <button
-        aria-label="Delete"
-        onClick={() => remove(m.id)}
-        className="rounded-full p-2 text-rose-600 hover:bg-rose-50"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </div>
-  );
+  const deleteMessage = async () => {
+    if (!deleting) return;
+    const message = deleting;
+    setBusyId(message.id);
+    setNotice(null);
+    try {
+      await adminRequest("DELETE", undefined, message.id);
+      setMessages((current) => current.filter((item) => item.id !== message.id));
+      setDeleting(null);
+      showNotice("Card deleted.");
+    } catch (error) {
+      showNotice(error.message, "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const signOut = () => {
+    setAuthenticated(false);
+    setMessages([]);
+    setPasscode("");
+    setNotice(null);
+  };
+
+  const visibleMessages = messages.filter((message) => {
+    const matchesFilter =
+      filter === "all" ||
+      (filter === "archived"
+        ? Boolean(message.archived_at)
+        : filter === "active"
+          ? Boolean(message.approved_at) && !message.archived_at
+          : !message.approved_at && !message.archived_at);
+    const searchable = `${message.to_name} ${message.from_name} ${message.message} ${message.department}`;
+    return matchesFilter && searchable.toLowerCase().includes(search.toLowerCase());
+  });
+  const activeCount = messages.filter(
+    (message) => message.approved_at && !message.archived_at,
+  ).length;
+  const pendingCount = messages.filter(
+    (message) => !message.approved_at && !message.archived_at,
+  ).length;
+  const archivedCount = messages.filter((message) => message.archived_at).length;
 
   return (
-    <main
-      className={`min-h-screen bg-gradient-to-br ${NEUTRAL_GRADIENT} p-4 sm:p-8`}
-    >
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-3xl font-black">Moderation ({shown.length})</h1>
-          <div className="flex items-center gap-2">
-            <button
-              disabled={!selected.size}
-              onClick={downloadSelected}
-              className="flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2 font-bold text-white disabled:opacity-40"
-            >
-              <Download className="h-4 w-4" /> Download selected (
-              {selected.size})
-            </button>
-            <button
-              aria-label="Table view"
-              onClick={() => setView("table")}
-              className={`rounded-full p-2 ${view === "table" ? "bg-stone-800 text-white" : "bg-white"}`}
-            >
-              <Table2 className="h-5 w-5" />
-            </button>
-            <button
-              aria-label="Grid view"
-              onClick={() => setView("grid")}
-              className={`rounded-full p-2 ${view === "grid" ? "bg-stone-800 text-white" : "bg-white"}`}
-            >
-              <LayoutGrid className="h-5 w-5" />
-            </button>
-          </div>
-        </header>
-        <DepartmentPills
-          allowAll
-          size="sm"
-          value={filter}
-          onChange={setFilter}
-        />
-
-        {view === "table" ? (
-          <div className="overflow-x-auto rounded-3xl bg-white shadow">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-stone-50 font-extrabold">
-                <tr>
-                  <th className="p-3" />
-                  <th className="p-3">Dept</th>
-                  <th className="p-3">To</th>
-                  <th className="p-3">Message</th>
-                  <th className="p-3">From</th>
-                  <th className="p-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((m) => (
-                  <tr key={m.id} className="border-t align-top">
-                    <td className="p-3">
-                      <input
-                        type="checkbox"
-                        aria-label="Select"
-                        checked={selected.has(m.id)}
-                        onChange={() => toggle(m.id)}
-                      />
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-extrabold ${DEPARTMENTS[m.department].soft} ${DEPARTMENTS[m.department].text}`}
-                      >
-                        {m.department}
-                      </span>
-                    </td>
-                    <td className="p-3 font-bold">{m.to_name}</td>
-                    <td className="max-w-md p-3">{m.message}</td>
-                    <td className="p-3">{m.from_name}</td>
-                    <td className="p-3">{actions(m)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!shown.length && (
-              <p className="p-6 font-bold text-stone-500">
-                No cards in this department yet.
-              </p>
-            )}
-          </div>
+    <main className="relative min-h-screen px-4 py-6 sm:px-8 sm:py-10">
+      <ThemeBackground />
+      <div className="relative z-10 mx-auto max-w-6xl">
+        {!authenticated ? (
+          <section className="mx-auto mt-[10vh] max-w-md rounded-3xl border border-white/70 bg-white/75 p-7 shadow-xl backdrop-blur sm:p-9">
+            <p className="mb-2 text-sm font-black uppercase tracking-wide text-emerald-900">
+              Teacher&apos;s Day
+            </p>
+            <h1 className="text-3xl font-black text-stone-900">Admin sign in</h1>
+            <p className="mt-2 font-semibold text-stone-600">
+              Enter the admin passcode to manage submitted cards.
+            </p>
+            <form onSubmit={signIn} className="mt-6 space-y-4">
+              <label className="block font-extrabold">
+                Admin passcode
+                <input
+                  autoFocus
+                  autoComplete="current-password"
+                  className={`${inputClass} mt-2`}
+                  type="password"
+                  value={passcode}
+                  onChange={(event) => setPasscode(event.target.value)}
+                  required
+                />
+              </label>
+              <button
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#1d4138] px-5 py-3 font-black text-white transition hover:bg-[#28584b] disabled:opacity-60"
+              >
+                {loading && <Loader2 className="h-5 w-5 animate-spin" />}
+                Sign in
+              </button>
+            </form>
+            <Link href="/" className="mt-5 inline-flex font-bold text-emerald-900 hover:underline">
+              Back to cards
+            </Link>
+          </section>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {shown.map((m) => (
-              <div key={m.id} className="space-y-2 rounded-3xl bg-white/60 p-3">
-                <div className="aspect-[4/5]">
-                  <MessageCard
-                    dept={m.department}
-                    to={m.to_name}
-                    message={m.message}
-                    from={m.from_name}
-                    maxFont={30}
-                  />
+          <>
+            <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="mb-1 text-sm font-black uppercase tracking-wide text-emerald-900">
+                  Teacher&apos;s Day
+                </p>
+                <h1 className="text-3xl font-black text-stone-900 sm:text-4xl">
+                  Message dashboard
+                </h1>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/presentation"
+                  className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 font-extrabold transition hover:bg-white"
+                >
+                  <ExternalLink className="h-4 w-4" /> Slideshow
+                </Link>
+                <Link
+                  href="/"
+                  className="rounded-full bg-white/80 px-4 py-2 font-extrabold transition hover:bg-white"
+                >
+                  Public page
+                </Link>
+                <button
+                  onClick={signOut}
+                  className="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 font-extrabold transition hover:bg-white"
+                >
+                  <LogOut className="h-4 w-4" /> Sign out
+                </button>
+              </div>
+            </header>
+
+            <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["All cards", messages.length],
+                ["Pending review", pendingCount],
+                ["Published", activeCount],
+                ["Archived", archivedCount],
+              ].map(([label, count]) => (
+                <div key={label} className="rounded-2xl border border-white/70 bg-white/65 px-5 py-4 backdrop-blur">
+                  <p className="text-sm font-bold text-stone-600">{label}</p>
+                  <p className="mt-1 text-2xl font-black text-stone-900">{count}</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <input
-                    type="checkbox"
-                    aria-label="Select"
-                    checked={selected.has(m.id)}
-                    onChange={() => toggle(m.id)}
-                  />
-                  {actions(m)}
+              ))}
+            </section>
+
+            <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-lg backdrop-blur">
+              <div className="flex flex-col gap-4 border-b border-stone-200/80 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex flex-wrap rounded-2xl bg-stone-100 p-1" role="tablist" aria-label="Filter cards">
+                  {[
+                    ["pending", `Pending ${pendingCount}`],
+                    ["active", `Published ${activeCount}`],
+                    ["archived", `Archived ${archivedCount}`],
+                    ["all", "All cards"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      role="tab"
+                      aria-selected={filter === key}
+                      onClick={() => setFilter(key)}
+                      className={`rounded-full px-3 py-2 text-sm font-extrabold transition sm:px-4 ${filter === key ? "bg-white text-emerald-950 shadow-sm" : "text-stone-600 hover:text-stone-900"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <label className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-500" />
+                    <input
+                      className={`${inputClass} pl-9`}
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search cards"
+                      aria-label="Search cards"
+                    />
+                  </label>
+                  <button
+                    onClick={loadMessages}
+                    disabled={loading}
+                    aria-label="Refresh messages"
+                    title="Refresh messages"
+                    className="grid aspect-square w-11 shrink-0 place-items-center rounded-xl border border-stone-200 bg-white/80 text-stone-700 transition hover:bg-white disabled:opacity-60"
+                  >
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="divide-y divide-stone-200/80">
+                {visibleMessages.map((message) => {
+                  const department = DEPARTMENTS[message.department];
+                  const isBusy = busyId === message.id;
+                  return (
+                    <article key={message.id} className="p-4 sm:p-6">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-3 py-1 text-xs font-black ${department?.soft || "bg-stone-100"} ${department?.text || "text-stone-800"}`}>
+                              {message.department}
+                            </span>
+                            <span className={`rounded-full px-3 py-1 text-xs font-black ${message.archived_at ? "bg-stone-200 text-stone-700" : message.approved_at ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>
+                              {message.archived_at ? "Archived" : message.approved_at ? "Published" : "Pending review"}
+                            </span>
+                            <time className="text-xs font-bold text-stone-500" dateTime={message.created_at}>
+                              {new Date(message.created_at).toLocaleString()}
+                            </time>
+                          </div>
+                          <h2 className="break-words text-lg font-black text-stone-900">
+                            {message.to_name}
+                          </h2>
+                          <p className="mt-2 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed text-stone-700">
+                            {message.message}
+                          </p>
+                          <p className="mt-2 text-sm font-bold text-stone-500">
+                            From {message.from_name || "Anonymous"}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                          <button
+                            onClick={() => setEditing({ ...message })}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white/80 px-3 py-2 text-sm font-extrabold text-stone-800 transition hover:bg-white disabled:opacity-50"
+                          >
+                            <Pencil className="h-4 w-4" /> Edit
+                          </button>
+                          {!message.archived_at && (
+                            <button
+                              onClick={() => toggleApproval(message)}
+                              disabled={isBusy}
+                              className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-extrabold transition disabled:opacity-50 ${message.approved_at ? "border-stone-200 bg-white/80 text-stone-800 hover:bg-white" : "border-emerald-800 bg-[#1d4138] text-white hover:bg-[#28584b]"}`}
+                            >
+                              {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : message.approved_at ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                              {message.approved_at ? "Return to review" : "Approve & publish"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => toggleArchive(message)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white/80 px-3 py-2 text-sm font-extrabold text-stone-800 transition hover:bg-white disabled:opacity-50"
+                          >
+                            {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
+                            {message.archived_at ? "Restore" : "Archive"}
+                          </button>
+                          <button
+                            onClick={() => setDeleting(message)}
+                            disabled={isBusy}
+                            className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white/80 px-3 py-2 text-sm font-extrabold text-rose-800 transition hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" /> Delete
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!visibleMessages.length && (
+                  <p className="px-6 py-14 text-center font-bold text-stone-600">
+                    {loading ? "Loading cards..." : "No cards match this view."}
+                  </p>
+                )}
+              </div>
+            </section>
+          </>
         )}
       </div>
 
-      {/* Off-screen fixed-size frames: 800x1000 CSS px x pixelRatio 3 = 2400x3000 PNG */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed left-[-99999px] top-0"
-      >
-        {items.map((m) => (
-          <div
-            key={m.id}
-            ref={(el) => (exportRefs.current[m.id] = el)}
-            style={{ width: 800, height: 1000, padding: 24 }}
-            className={`bg-gradient-to-br ${DEPARTMENTS[m.department].gradient}`}
-          >
-            <MessageCard
-              dept={m.department}
-              to={m.to_name}
-              message={m.message}
-              from={m.from_name}
-              maxFont={56}
-            />
-          </div>
-        ))}
-      </div>
-
       {editing && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-black">Edit card</h2>
-              <button aria-label="Close" onClick={() => setEditing(null)}>
-                <X />
-              </button>
-            </div>
-            {[
-              ["to_name", "To"],
-              ["from_name", "From"],
-            ].map(([k, l]) => (
-              <label key={k} className="block font-bold">
-                {l}
-                <input
-                  value={editing[k]}
-                  maxLength={80}
-                  onChange={(e) =>
-                    setEditing({ ...editing, [k]: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border-2 px-3 py-2 font-semibold"
-                />
-              </label>
-            ))}
-            <label className="block font-bold">
-              Message
-              <textarea
-                value={editing.message}
-                maxLength={800}
-                onChange={(e) =>
-                  setEditing({ ...editing, message: e.target.value })
-                }
-                className="mt-1 min-h-[140px] w-full rounded-xl border-2 px-3 py-2 font-semibold"
-              />
-            </label>
-            <div className="flex justify-end gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-stone-950/40 p-4" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-card-title"
+            className="my-auto w-full max-w-xl rounded-3xl border border-white/70 bg-[#fbfaf6] p-5 shadow-2xl sm:p-7"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black uppercase tracking-wide text-emerald-900">{editing.department}</p>
+                <h2 id="edit-card-title" className="mt-1 text-2xl font-black">Edit card</h2>
+              </div>
               <button
                 onClick={() => setEditing(null)}
-                className="rounded-full px-4 py-2 font-bold"
+                aria-label="Close editor"
+                className="grid h-10 w-10 place-items-center rounded-full bg-white text-stone-700 hover:bg-stone-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={saveEdit} className="space-y-4">
+              <label className="block font-extrabold">
+                Teacher name
+                <input
+                  className={`${inputClass} mt-2`}
+                  maxLength={80}
+                  required
+                  value={editing.to_name}
+                  onChange={(event) => setEditing({ ...editing, to_name: event.target.value })}
+                />
+              </label>
+              <label className="block font-extrabold">
+                Message
+                <textarea
+                  className={`${inputClass} mt-2 min-h-36 resize-y`}
+                  maxLength={800}
+                  required
+                  value={editing.message}
+                  onChange={(event) => setEditing({ ...editing, message: event.target.value })}
+                />
+              </label>
+              <label className="block font-extrabold">
+                From
+                <input
+                  className={`${inputClass} mt-2`}
+                  maxLength={80}
+                  value={editing.from_name || ""}
+                  onChange={(event) => setEditing({ ...editing, from_name: event.target.value })}
+                />
+              </label>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="rounded-full px-4 py-2 font-extrabold text-stone-700 hover:bg-stone-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={busyId === editing.id}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#1d4138] px-5 py-2 font-black text-white hover:bg-[#28584b] disabled:opacity-60"
+                >
+                  {busyId === editing.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Save changes
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-stone-950/40 p-4" role="presentation">
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-card-title"
+            aria-describedby="delete-card-description"
+            className="my-auto w-full max-w-md rounded-3xl border border-white/70 bg-[#fbfaf6] p-5 shadow-2xl sm:p-7"
+          >
+            <div className="mb-5 flex items-start gap-4">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-rose-100 text-rose-800">
+                <Trash2 className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 id="delete-card-title" className="text-xl font-black text-stone-900">
+                  Delete this card?
+                </h2>
+                <p id="delete-card-description" className="mt-2 font-semibold leading-relaxed text-stone-600">
+                  The card for <span className="font-black text-stone-900">{deleting.to_name}</span> will be permanently deleted. This can&apos;t be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setDeleting(null)}
+                disabled={busyId === deleting.id}
+                className="rounded-full px-4 py-2 font-extrabold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={save}
-                className="rounded-full bg-stone-800 px-5 py-2 font-black text-white"
+                type="button"
+                onClick={deleteMessage}
+                disabled={busyId === deleting.id}
+                className="inline-flex items-center gap-2 rounded-full bg-rose-700 px-5 py-2 font-black text-white transition hover:bg-rose-800 disabled:opacity-60"
               >
-                Save changes
+                {busyId === deleting.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                Delete permanently
               </button>
             </div>
-          </div>
+          </section>
+        </div>
+      )}
+
+      {notice && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-stone-950/40 p-4">
+          <section
+            role={notice.type === "error" ? "alertdialog" : "dialog"}
+            aria-modal="true"
+            aria-labelledby="admin-notice-title"
+            aria-describedby="admin-notice-message"
+            className="w-full max-w-md rounded-3xl border border-white/70 bg-[#fbfaf6] p-6 shadow-2xl sm:p-7"
+          >
+            <div className="mb-5 flex items-start gap-4">
+              <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${notice.type === "error" ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-900"}`}>
+                {notice.type === "error" ? <X className="h-5 w-5" /> : <Check className="h-5 w-5" />}
+              </span>
+              <div>
+                <h2 id="admin-notice-title" className="text-xl font-black text-stone-900">
+                  {notice.type === "error" ? "Could not complete action" : "Done"}
+                </h2>
+                <p id="admin-notice-message" className="mt-2 break-words font-semibold leading-relaxed text-stone-600">
+                  {notice.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setNotice(null)}
+                className="rounded-full bg-[#1d4138] px-5 py-2 font-black text-white transition hover:bg-[#28584b]"
+              >
+                Dismiss
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </main>
