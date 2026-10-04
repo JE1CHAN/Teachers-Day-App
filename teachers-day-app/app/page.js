@@ -1,16 +1,14 @@
 "use client";
-import { Send, Presentation, Loader2 } from "lucide-react"; // PenLine removed
-import ThemeBackground from "@/components/ThemeBackground"; // SplashBackground removed
-import Scene from "@/components/scene/Scene";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import confetti from "canvas-confetti";
-import { Send, Presentation, Loader2, PenLine } from "lucide-react";
+import { Send, Presentation, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { DEPARTMENTS } from "@/lib/departments";
 import DepartmentPills from "@/components/DepartmentPills";
 import MessageCard from "@/components/MessageCard";
 import ThemeBackground from "@/components/ThemeBackground";
+import Scene from "@/components/scene/Scene";
 
 const inputCls =
   "w-full rounded-2xl border-2 border-white bg-white/80 px-4 py-3 font-semibold outline-none transition focus:border-stone-400";
