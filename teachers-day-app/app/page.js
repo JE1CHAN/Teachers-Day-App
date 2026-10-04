@@ -166,7 +166,7 @@ export default function Home() {
             )}
             {status.done && (
               <p role="status" className="font-bold text-emerald-700">
-                Card sent! Write another if you like.
+                Card submitted for review. It will appear after approval.
               </p>
             )}
             <button

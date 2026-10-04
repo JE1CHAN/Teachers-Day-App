@@ -12,8 +12,14 @@ export async function GET(req) {
 }
 export async function PATCH(req) {
   if (!authed(req)) return deny();
-  const { id, to_name, message, from_name } = await req.json();
-  return out(await db().from('messages').update({ to_name, message, from_name }).eq('id', id).select().single());
+  const { id, to_name, message, from_name, archived_at, approved_at } = await req.json();
+  const updates = {};
+  if (to_name !== undefined) updates.to_name = to_name;
+  if (message !== undefined) updates.message = message;
+  if (from_name !== undefined) updates.from_name = from_name;
+  if (archived_at !== undefined) updates.archived_at = archived_at;
+  if (approved_at !== undefined) updates.approved_at = approved_at;
+  return out(await db().from('messages').update(updates).eq('id', id).select().single());
 }
 export async function DELETE(req) {
   if (!authed(req)) return deny();
