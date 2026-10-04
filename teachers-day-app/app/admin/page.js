@@ -1,242 +1,348 @@
 "use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import confetti from "canvas-confetti";
-import { Send, Presentation, Loader2, PenLine } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-import { DEPARTMENTS } from "@/lib/departments";
-import DepartmentPills from "@/components/DepartmentPills";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { toPng } from "html-to-image";
+import {
+  Download,
+  Pencil,
+  Trash2,
+  LayoutGrid,
+  Table2,
+  Lock,
+  X,
+} from "lucide-react";
 import MessageCard from "@/components/MessageCard";
-import ThemeBackground from "@/components/ThemeBackground";
+import DepartmentPills from "@/components/DepartmentPills";
+import { DEPARTMENTS, NEUTRAL_GRADIENT } from "@/lib/departments";
 
-const inputCls =
-  "w-full rounded-2xl border-2 border-white bg-white/80 px-4 py-3 font-semibold outline-none transition focus:border-stone-400";
+export default function Admin() {
+  const [pass, setPass] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const [error, setError] = useState("");
+  const [items, setItems] = useState([]);
+  const [view, setView] = useState("table");
+  const [filter, setFilter] = useState("All");
+  const [selected, setSelected] = useState(new Set());
+  const [editing, setEditing] = useState(null);
+  const exportRefs = useRef({});
 
-export default function Home() {
-  const [phase, setPhase] = useState("splash"); // splash -> leaving -> done
-  const [dept, setDept] = useState("IT");
-  const [form, setForm] = useState({ to_name: "", message: "", from_name: "" });
-  const [status, setStatus] = useState({
-    loading: false,
-    error: "",
-    done: false,
-  });
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const d = DEPARTMENTS[dept];
+  const api = useCallback(
+    async (method, body, query = "", p = pass) => {
+      const res = await fetch("/api/admin" + query, {
+        method,
+        headers: { "x-admin-passcode": p, "Content-Type": "application/json" },
+        body: body && JSON.stringify(body),
+      });
+      return { ok: res.ok, ...(await res.json()) };
+    },
+    [pass],
+  );
 
-  useEffect(() => {
-    document.body.style.overflow = phase === "splash" ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [phase]);
-  const enter = () => {
-    setPhase("leaving");
-    setTimeout(() => setPhase("done"), 900);
-  };
-
-  const celebrate = () => {
-    const colors = [...d.palette, "#fbbf24", "#f472b6"];
-    confetti({ particleCount: 140, spread: 80, origin: { y: 0.65 }, colors });
-    setTimeout(
-      () =>
-        confetti({
-          particleCount: 80,
-          angle: 60,
-          spread: 60,
-          origin: { x: 0 },
-          colors,
-        }),
-      250,
-    );
-    setTimeout(
-      () =>
-        confetti({
-          particleCount: 80,
-          angle: 120,
-          spread: 60,
-          origin: { x: 1 },
-          colors,
-        }),
-      250,
-    );
-  };
-
-  const submit = async (e) => {
+  const login = async (e) => {
     e.preventDefault();
-    if (!form.to_name.trim() || !form.message.trim())
-      return setStatus({
-        loading: false,
-        error: "Please add a teacher name and a message.",
-        done: false,
-      });
-    setStatus({ loading: true, error: "", done: false });
-    const { error } = await supabase.from("messages").insert({
-      department: dept,
-      to_name: form.to_name.trim(),
-      message: form.message.trim(),
-      from_name: form.from_name.trim() || "Anonymous",
-    });
-    if (error)
-      return setStatus({
-        loading: false,
-        error: "Could not send your card. Please try again.",
-        done: false,
-      });
-    celebrate();
-    setForm({ to_name: "", message: "", from_name: "" });
-    setStatus({ loading: false, error: "", done: true });
+    const r = await api("GET");
+    if (!r.ok) return setError(r.error || "Could not sign in");
+    sessionStorage.setItem("adminPass", pass);
+    setItems(r.data);
+    setAuthed(true);
+    setError("");
   };
+  useEffect(() => {
+    // restore session
+    const p = sessionStorage.getItem("adminPass");
+    if (p) {
+      setPass(p);
+      api("GET", null, "", p).then((r) => {
+        if (r.ok) {
+          setItems(r.data);
+          setAuthed(true);
+        }
+      });
+    }
+  }, []); // eslint-disable-line
+
+  const save = async () => {
+    const r = await api("PATCH", editing);
+    if (r.ok) {
+      setItems(items.map((m) => (m.id === r.data.id ? r.data : m)));
+      setEditing(null);
+    } else alert(r.error);
+  };
+  const remove = async (id) => {
+    if (!confirm("Delete this card permanently?")) return;
+    const r = await api("DELETE", null, `?id=${id}`);
+    if (r.ok) setItems(items.filter((m) => m.id !== id));
+    else alert(r.error);
+  };
+  const download = async (m) => {
+    const node = exportRefs.current[m.id];
+    const url = await toPng(node, { pixelRatio: 3, cacheBust: true });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `card-${m.department}-${m.to_name.replace(/\W+/g, "_")}-${m.id.slice(0, 6)}.png`;
+    a.click();
+  };
+  const downloadSelected = async () => {
+    for (const m of items.filter((x) => selected.has(x.id))) {
+      await download(m);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  };
+  const toggle = (id) => {
+    const s = new Set(selected);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setSelected(s);
+  };
+
+  if (!authed) {
+    return (
+      <main
+        className={`grid min-h-screen place-items-center bg-gradient-to-br ${NEUTRAL_GRADIENT} p-4`}
+      >
+        <form
+          onSubmit={login}
+          className="w-full max-w-sm space-y-4 rounded-[2rem] bg-white p-8 shadow-xl"
+        >
+          <Lock className="h-8 w-8" />
+          <h1 className="text-2xl font-black">Admin passcode</h1>
+          <input
+            type="password"
+            autoFocus
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            className="w-full rounded-2xl border-2 px-4 py-3 font-semibold outline-none focus:border-stone-500"
+          />
+          {error && (
+            <p role="alert" className="font-bold text-rose-600">
+              {error}
+            </p>
+          )}
+          <button className="w-full rounded-full bg-stone-800 py-3 font-black text-white">
+            Open dashboard
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  const shown =
+    filter === "All" ? items : items.filter((m) => m.department === filter);
+  const actions = (m) => (
+    <div className="flex gap-1">
+      <button
+        aria-label="Download PNG"
+        onClick={() => download(m)}
+        className="rounded-full p-2 hover:bg-stone-100"
+      >
+        <Download className="h-4 w-4" />
+      </button>
+      <button
+        aria-label="Edit"
+        onClick={() => setEditing({ ...m })}
+        className="rounded-full p-2 hover:bg-stone-100"
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+      <button
+        aria-label="Delete"
+        onClick={() => remove(m.id)}
+        className="rounded-full p-2 text-rose-600 hover:bg-rose-50"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  );
 
   return (
-    <main className="relative min-h-screen px-4 py-8 sm:px-8">
-      <ThemeBackground dept={dept} />
-
-      <div
-        className={`relative z-10 mx-auto max-w-6xl transition duration-700 ${phase === "splash" ? "translate-y-8 opacity-0" : "translate-y-0 opacity-100"}`}
-      >
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className={`text-4xl font-black sm:text-5xl ${d.text}`}>
-              Choose your department
-            </h1>
-            <p className="mt-2 max-w-xl text-lg font-semibold text-stone-700">
-              Pick yours, then write a thank-you card for a teacher who made a
-              difference.
-            </p>
-          </div>
-          <Link
-            href="/presentation"
-            className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 font-extrabold transition hover:bg-white active:scale-95"
-          >
-            <Presentation className="h-5 w-5" /> View slideshow
-          </Link>
-        </header>
-
-        <div className="mb-6">
-          <DepartmentPills value={dept} onChange={setDept} />
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-2">
-          <form
-            onSubmit={submit}
-            className="space-y-5 rounded-[2rem] bg-white/50 p-6 backdrop-blur"
-          >
-            <label className="block">
-              <span className="mb-1 block font-extrabold">
-                To (teacher name)
-              </span>
-              <input
-                className={inputCls}
-                maxLength={80}
-                value={form.to_name}
-                onChange={set("to_name")}
-                placeholder="Ma'am Santos"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block font-extrabold">Message</span>
-              <textarea
-                className={`${inputCls} min-h-[160px] resize-y`}
-                maxLength={800}
-                value={form.message}
-                onChange={set("message")}
-                placeholder="Thank you for believing in us…"
-              />
-              <span className="mt-1 block text-right text-sm font-semibold text-stone-500">
-                {form.message.length}/800
-              </span>
-            </label>
-            <label className="block">
-              <span className="mb-1 block font-extrabold">
-                From (your name, optional)
-              </span>
-              <input
-                className={inputCls}
-                maxLength={80}
-                value={form.from_name}
-                onChange={set("from_name")}
-                placeholder="Leave blank to stay anonymous"
-              />
-            </label>
-            {status.error && (
-              <p role="alert" className="font-bold text-rose-600">
-                {status.error}
-              </p>
-            )}
-            {status.done && (
-              <p role="status" className="font-bold text-emerald-700">
-                Card sent! Write another if you like.
-              </p>
-            )}
+    <main
+      className={`min-h-screen bg-gradient-to-br ${NEUTRAL_GRADIENT} p-4 sm:p-8`}
+    >
+      <div className="mx-auto max-w-7xl space-y-5">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-3xl font-black">Moderation ({shown.length})</h1>
+          <div className="flex items-center gap-2">
             <button
-              disabled={status.loading}
-              className={`flex w-full items-center justify-center gap-2 rounded-full ${d.accent} px-6 py-4 text-lg font-black text-white shadow-lg transition hover:-translate-y-0.5 active:scale-95 disabled:opacity-60`}
+              disabled={!selected.size}
+              onClick={downloadSelected}
+              className="flex items-center gap-2 rounded-full bg-stone-800 px-4 py-2 font-bold text-white disabled:opacity-40"
             >
-              {status.loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Send className="h-5 w-5" />
-              )}{" "}
-              Send card
+              <Download className="h-4 w-4" /> Download selected (
+              {selected.size})
             </button>
-          </form>
-
-          <div>
-            <p className="mb-2 font-extrabold text-stone-700">Live preview</p>
-            <div
-              key={dept}
-              className="pop mx-auto aspect-[4/5] w-full max-w-md"
+            <button
+              aria-label="Table view"
+              onClick={() => setView("table")}
+              className={`rounded-full p-2 ${view === "table" ? "bg-stone-800 text-white" : "bg-white"}`}
             >
-              <MessageCard
-                dept={dept}
-                to={form.to_name}
-                message={form.message}
-                from={form.from_name}
-                maxFont={34}
-              />
-            </div>
+              <Table2 className="h-5 w-5" />
+            </button>
+            <button
+              aria-label="Grid view"
+              onClick={() => setView("grid")}
+              className={`rounded-full p-2 ${view === "grid" ? "bg-stone-800 text-white" : "bg-white"}`}
+            >
+              <LayoutGrid className="h-5 w-5" />
+            </button>
           </div>
-        </div>
+        </header>
+        <DepartmentPills
+          allowAll
+          size="sm"
+          value={filter}
+          onChange={setFilter}
+        />
+
+        {view === "table" ? (
+          <div className="overflow-x-auto rounded-3xl bg-white shadow">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-stone-50 font-extrabold">
+                <tr>
+                  <th className="p-3" />
+                  <th className="p-3">Dept</th>
+                  <th className="p-3">To</th>
+                  <th className="p-3">Message</th>
+                  <th className="p-3">From</th>
+                  <th className="p-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((m) => (
+                  <tr key={m.id} className="border-t align-top">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select"
+                        checked={selected.has(m.id)}
+                        onChange={() => toggle(m.id)}
+                      />
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-extrabold ${DEPARTMENTS[m.department].soft} ${DEPARTMENTS[m.department].text}`}
+                      >
+                        {m.department}
+                      </span>
+                    </td>
+                    <td className="p-3 font-bold">{m.to_name}</td>
+                    <td className="max-w-md p-3">{m.message}</td>
+                    <td className="p-3">{m.from_name}</td>
+                    <td className="p-3">{actions(m)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!shown.length && (
+              <p className="p-6 font-bold text-stone-500">
+                No cards in this department yet.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {shown.map((m) => (
+              <div key={m.id} className="space-y-2 rounded-3xl bg-white/60 p-3">
+                <div className="aspect-[4/5]">
+                  <MessageCard
+                    dept={m.department}
+                    to={m.to_name}
+                    message={m.message}
+                    from={m.from_name}
+                    maxFont={30}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <input
+                    type="checkbox"
+                    aria-label="Select"
+                    checked={selected.has(m.id)}
+                    onChange={() => toggle(m.id)}
+                  />
+                  {actions(m)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {phase !== "done" && (
-        <section
-          className={`fixed inset-0 z-50 flex items-center justify-center overflow-hidden px-6 text-center transition-transform duration-[900ms] ease-[cubic-bezier(.77,0,.18,1)] ${phase === "leaving" ? "-translate-y-full" : ""}`}
+      {/* Off-screen fixed-size frames: 800x1000 CSS px x pixelRatio 3 = 2400x3000 PNG */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed left-[-99999px] top-0"
+      >
+        {items.map((m) => (
+          <div
+            key={m.id}
+            ref={(el) => (exportRefs.current[m.id] = el)}
+            style={{ width: 800, height: 1000, padding: 24 }}
+            className={`bg-gradient-to-br ${DEPARTMENTS[m.department].gradient}`}
+          >
+            <MessageCard
+              dept={m.department}
+              to={m.to_name}
+              message={m.message}
+              from={m.from_name}
+              maxFont={56}
+            />
+          </div>
+        ))}
+      </div>
+
+      {editing && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
         >
-          <ThemeBackground dept={dept} animated />
-          <div className="relative z-10">
-            <h1
-              className={`text-[length:clamp(3rem,12vw,9rem)] font-black uppercase leading-[.95] tracking-tight ${d.text}`}
-            >
-              {["Happy", "Teachers", "Day"].map((w, i) => (
-                <span
-                  key={w}
-                  className="word-in block"
-                  style={{ animationDelay: `${i * 150}ms` }}
-                >
-                  {w}
-                </span>
-              ))}
-            </h1>
-            <p
-              className="word-in mx-auto mt-6 max-w-md text-xl font-bold text-stone-700"
-              style={{ animationDelay: "650ms" }}
-            >
-              Add a message for your favorite instructor.
-            </p>
-            <div className="word-in mt-8" style={{ animationDelay: "850ms" }}>
+          <div className="w-full max-w-lg space-y-4 rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-black">Edit card</h2>
+              <button aria-label="Close" onClick={() => setEditing(null)}>
+                <X />
+              </button>
+            </div>
+            {[
+              ["to_name", "To"],
+              ["from_name", "From"],
+            ].map(([k, l]) => (
+              <label key={k} className="block font-bold">
+                {l}
+                <input
+                  value={editing[k]}
+                  maxLength={80}
+                  onChange={(e) =>
+                    setEditing({ ...editing, [k]: e.target.value })
+                  }
+                  className="mt-1 w-full rounded-xl border-2 px-3 py-2 font-semibold"
+                />
+              </label>
+            ))}
+            <label className="block font-bold">
+              Message
+              <textarea
+                value={editing.message}
+                maxLength={800}
+                onChange={(e) =>
+                  setEditing({ ...editing, message: e.target.value })
+                }
+                className="mt-1 min-h-[140px] w-full rounded-xl border-2 px-3 py-2 font-semibold"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
               <button
-                autoFocus
-                onClick={enter}
-                style={{ "--ring": `${d.palette[0]}55` }}
-                className={`cta-pulse inline-flex items-center gap-2 rounded-full ${d.accent} px-8 py-4 text-lg font-black text-white shadow-xl transition hover:-translate-y-0.5 active:scale-95`}
+                onClick={() => setEditing(null)}
+                className="rounded-full px-4 py-2 font-bold"
               >
-                <PenLine className="h-5 w-5" /> Write a message
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                className="rounded-full bg-stone-800 px-5 py-2 font-black text-white"
+              >
+                Save changes
               </button>
             </div>
           </div>
-        </section>
+        </div>
       )}
     </main>
   );
