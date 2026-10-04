@@ -1,4 +1,7 @@
 "use client";
+import { Send, Presentation, Loader2 } from "lucide-react"; // PenLine removed
+import ThemeBackground from "@/components/ThemeBackground"; // SplashBackground removed
+import Scene from "@/components/scene/Scene";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import confetti from "canvas-confetti";
@@ -202,40 +205,9 @@ export default function Home() {
 
       {phase !== "done" && (
         <section
-          className={`fixed inset-0 z-50 flex items-center justify-center overflow-hidden px-6 text-center transition-transform duration-[900ms] ease-[cubic-bezier(.77,0,.18,1)] ${phase === "leaving" ? "-translate-y-full" : ""}`}
+          className={`fixed inset-0 z-50 transition-transform duration-[900ms] ease-[cubic-bezier(.77,0,.18,1)] ${phase === "leaving" ? "-translate-y-full" : ""}`}
         >
-          <ThemeBackground dept={dept} animated />
-          <div className="relative z-10">
-            <h1
-              className={`text-[length:clamp(3rem,12vw,9rem)] font-black uppercase leading-[.95] tracking-tight ${d.text}`}
-            >
-              {["Happy", "Teachers", "Day"].map((w, i) => (
-                <span
-                  key={w}
-                  className="word-in block"
-                  style={{ animationDelay: `${i * 150}ms` }}
-                >
-                  {w}
-                </span>
-              ))}
-            </h1>
-            <p
-              className="word-in mx-auto mt-6 max-w-md text-xl font-bold text-stone-700"
-              style={{ animationDelay: "650ms" }}
-            >
-              Add a message for your favorite instructor.
-            </p>
-            <div className="word-in mt-8" style={{ animationDelay: "850ms" }}>
-              <button
-                autoFocus
-                onClick={enter}
-                style={{ "--ring": `${d.palette[0]}55` }}
-                className={`cta-pulse inline-flex items-center gap-2 rounded-full ${d.accent} px-8 py-4 text-lg font-black text-white shadow-xl transition hover:-translate-y-0.5 active:scale-95`}
-              >
-                <PenLine className="h-5 w-5" /> Write a message
-              </button>
-            </div>
-          </div>
+          <Scene dept={dept} onDeptChange={setDept} onEnter={enter} />
         </section>
       )}
     </main>

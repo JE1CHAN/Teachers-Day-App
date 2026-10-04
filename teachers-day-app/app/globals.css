@@ -95,3 +95,19 @@
     animation: none !important;
   }
 }
+
+@property --ambient {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #f5b841;
+}
+@property --ambient-soft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #f5b84144;
+}
+.scene-root {
+  transition:
+    --ambient 1.2s ease-in-out,
+    --ambient-soft 1.2s ease-in-out;
+}
