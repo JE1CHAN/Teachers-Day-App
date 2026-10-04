@@ -8,6 +8,10 @@ export const DEPARTMENTS = {
     text: "text-[#1d4138]",
     soft: "bg-[#d4e6df]",
     palette: ["#1d4138", "#5b8f7e", "#a9cbbf"],
+    note: "#b9d9ca",
+    noteLight: "#d3e9df",
+    noteDeep: "#9cc4b2",
+    ink: "#1d4138",
   },
   HTM: {
     fullName: "HTM Department",
@@ -17,6 +21,10 @@ export const DEPARTMENTS = {
     text: "text-teal-800",
     soft: "bg-teal-100",
     palette: ["#0f766e", "#2dd4bf", "#99f6e4"],
+    note: "#b4ead9",
+    noteLight: "#d0f5ea",
+    noteDeep: "#94d6c0",
+    ink: "#0f4a45",
   },
   Technology: {
     fullName: "Technology Department",
@@ -26,6 +34,10 @@ export const DEPARTMENTS = {
     text: "text-amber-800",
     soft: "bg-amber-100",
     palette: ["#b45309", "#f59e0b", "#fde68a"],
+    note: "#fde58a",
+    noteLight: "#fff0b3",
+    noteDeep: "#f4cf5c",
+    ink: "#4a3203",
   },
   Education: {
     fullName: "Education Department",
@@ -35,6 +47,10 @@ export const DEPARTMENTS = {
     text: "text-sky-800",
     soft: "bg-sky-100",
     palette: ["#0369a1", "#38bdf8", "#bae6fd"],
+    note: "#a9d6f5",
+    noteLight: "#cbe7fa",
+    noteDeep: "#86c0ea",
+    ink: "#123b63",
   },
   Engineering: {
     fullName: "Engineering Department",
@@ -44,6 +60,10 @@ export const DEPARTMENTS = {
     text: "text-rose-800",
     soft: "bg-rose-100",
     palette: ["#be123c", "#fb7185", "#fecdd3"],
+    note: "#f8b4c1",
+    noteLight: "#fcd0d9",
+    noteDeep: "#f08a9f",
+    ink: "#661628",
   },
 };
 export const DEPT_KEYS = Object.keys(DEPARTMENTS);
